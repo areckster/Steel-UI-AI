@@ -15,7 +15,7 @@ def _resolve_paths(entries: Iterable[str]) -> List[str]:
     ``pyproject.toml`` lists resources relative to the repository root. When
     ``setup.py`` executes from ``macos/SteelChatApp`` these files appear to be
     missing (for example ``server.py``), triggering the observed packaging
-    failure.  This helper searches upward from the setup directory to locate
+    failure. This helper searches upward from the setup directory to locate
     the referenced files and returns their absolute paths for py2app.
     """
 
