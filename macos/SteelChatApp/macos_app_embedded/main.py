@@ -16,8 +16,26 @@ from Cocoa import (
 from Foundation import NSAutoreleasePool, NSMakeRect
 from PyObjCTools import AppHelper
 
-from .backend import EmbeddedBackend
-from .ui import build_web_chat_view
+def _load_components():
+    import importlib
+    import pathlib
+    import sys
+
+    if __package__:
+        backend_module = importlib.import_module(".backend", __package__)
+        ui_module = importlib.import_module(".ui", __package__)
+        return backend_module.EmbeddedBackend, ui_module.build_web_chat_view
+
+    package_dir = pathlib.Path(__file__).resolve().parent
+    if str(package_dir) not in sys.path:
+        sys.path.insert(0, str(package_dir))
+
+    backend_module = importlib.import_module("backend")
+    ui_module = importlib.import_module("ui")
+    return backend_module.EmbeddedBackend, ui_module.build_web_chat_view
+
+
+EmbeddedBackend, build_web_chat_view = _load_components()
 
 
 class AppDelegate(NSObject):
