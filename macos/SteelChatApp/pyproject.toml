@@ -15,7 +15,8 @@ dependencies = [
   "httpx",
   "pyobjc",
   "pyobjc-framework-Cocoa",
-  "pyobjc-framework-WebKit"
+  "pyobjc-framework-WebKit",
+  "jaraco.text"
 ]
 
 [tool.setuptools.packages.find]
@@ -31,8 +32,13 @@ macos_app_embedded = [
 script = "macos_app_embedded/main.py"
 
 [tool.py2app.options]
-argv_emulation = true
-includes = ["fastapi", "uvicorn", "httpx", "pyobjc"]
+# macOS 14+ no longer ships the legacy Carbon framework that py2app uses to
+# implement argv emulation. Leaving the feature enabled causes the bundled app
+# to crash at launch when `ctypes` attempts to load Carbon. Disable it so the
+# bundle starts normally on modern macOS releases.
+argv_emulation = false
+includes = ["fastapi", "uvicorn", "httpx", "pyobjc", "pkg_resources", "jaraco.text"]
+packages = ["jaraco", "jaraco.text"]
 resources = [
   "server.py",
   "tools.py",
