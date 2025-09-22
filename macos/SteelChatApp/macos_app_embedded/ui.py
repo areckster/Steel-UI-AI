@@ -17,6 +17,7 @@ from Cocoa import (
     NSAppearanceNameVibrantDark,
     NSApp,
     NSApplication,
+    NSBackingStoreBuffered,
     NSBezelStyleRounded,
     NSButton,
     NSColor,
@@ -163,6 +164,10 @@ class NativeChatView(NSView):
         }
         self.system = ""
         self.attachments: List[Dict[str, Any]] = []
+        self._assistant_buf = ""
+        self._started_at = 0.0
+        self._first_byte = 0.0
+        self._last_token_est = 0
         self._build()
         return self
 
@@ -418,34 +423,192 @@ class NativeChatView(NSView):
                 in_tokens = int(len(self.history[-1].get("content", "")) / 4)
         self.telemetry.setStringValue_(f"tkn: {in_tokens}/{out} • {latency_ms}")
 
-    def refreshModels_(self, _):
-        def on_result(obj):
-            txt = json.dumps(obj, indent=2)
-            self.modelsList.setString_(txt)
+
+class SettingsPanel(NSWindow):
+    """Settings window exposing model and runtime controls."""
+
+    def initWithClient_native_(self, client: ChatClient, native: NativeChatView):
+        style = NSWindowStyleMask.titled | NSWindowStyleMask.closable
+        self = super().initWithContentRect_styleMask_backing_defer_(
+            NSMakeRect(0, 0, 520, 560), style, NSBackingStoreBuffered, False
+        )
+        if self is None:
+            return None
+
+        self.setTitle_("Settings")
+        self.client = client
+        self.native = native
+
+        root = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 520, 560))
+        root.setTranslatesAutoresizingMaskIntoConstraints_(False)
+        self.setContentView_(root)
+
+        def label(text: str) -> NSTextField:
+            field = NSTextField.alloc().init()
+            field.setEditable_(False)
+            field.setBezeled_(False)
+            field.setDrawsBackground_(False)
+            field.setStringValue_(text)
+            return field
+
+        def number_field(value: Any) -> NSTextField:
+            field = NSTextField.alloc().init()
+            field.setStringValue_(str(value))
+            return field
+
+        self.modelField = NSTextField.alloc().init()
+        self.modelField.setStringValue_("")
+        self.useBtn = NSButton.alloc().init()
+        self.useBtn.setTitle_("Use Model")
+        self.useBtn.setTarget_(self)
+        self.useBtn.setAction_(b"applyModel:")
+
+        self.refreshBtn = NSButton.alloc().init()
+        self.refreshBtn.setTitle_("Installed…")
+        self.refreshBtn.setTarget_(self)
+        self.refreshBtn.setAction_(b"refreshModels:")
+
+        self.modelsList = NSTextView.alloc().init()
+        self.modelsList.setEditable_(False)
+
+        self.systemField = NSTextView.alloc().init()
+        self.systemField.setEditable_(True)
+
+        self.dynamicField = NSButton.alloc().init()
+        self.dynamicField.setTitle_("Dynamic Context")
+        self.dynamicField.setButtonType_(3)
+        self.dynamicField.setState_(1)
+
+        self.maxCtxField = number_field(40000)
+        self.numCtxField = number_field(8192)
+        self.tempField = number_field(0.9)
+        self.topPField = number_field(0.9)
+        self.topKField = number_field(100)
+        self.numPredictField = NSTextField.alloc().init()
+        self.numPredictField.setStringValue_("")
+        self.seedField = NSTextField.alloc().init()
+        self.seedField.setStringValue_("")
+
+        self.applySettingsBtn = NSButton.alloc().init()
+        self.applySettingsBtn.setTitle_("Apply Settings")
+        self.applySettingsBtn.setTarget_(self)
+        self.applySettingsBtn.setAction_(b"applySettings:")
+
+        self.healthField = NSTextField.alloc().init()
+        self.healthField.setEditable_(False)
+        self.healthField.setBezeled_(False)
+        self.healthField.setDrawsBackground_(False)
+        self.healthField.setStringValue_("Checking backend…")
+
+        y = 520
+
+        def add(view: NSView, height: float = 24, pad: float = 8) -> None:
+            nonlocal y
+            y -= height + pad
+            view.setFrame_(NSMakeRect(16, y, 488, height))
+            root.addSubview_(view)
+
+        add(label("Model tag:"))
+        add(self.modelField)
+
+        row = NSView.alloc().initWithFrame_(NSMakeRect(16, y - 26, 488, 26))
+        root.addSubview_(row)
+        y -= 26 + 8
+
+        self.useBtn.setFrame_(NSMakeRect(0, 0, 120, 26))
+        row.addSubview_(self.useBtn)
+        self.refreshBtn.setFrame_(NSMakeRect(128, 0, 120, 26))
+        row.addSubview_(self.refreshBtn)
+
+        add(label("Installed models:"))
+        scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(16, y - 120, 488, 120))
+        y -= 120 + 8
+        scroll.setHasVerticalScroller_(True)
+        scroll.setDocumentView_(self.modelsList)
+        root.addSubview_(scroll)
+
+        add(label("System prompt:"), height=18)
+        system_scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(16, y - 100, 488, 100))
+        y -= 100 + 8
+        system_scroll.setHasVerticalScroller_(True)
+        system_scroll.setDocumentView_(self.systemField)
+        root.addSubview_(system_scroll)
+
+        add(self.dynamicField)
+        add(label("Max Context"))
+        add(self.maxCtxField)
+        add(label("Static Context (num_ctx)"))
+        add(self.numCtxField)
+        add(label("Temperature"))
+        add(self.tempField)
+        add(label("top_p"))
+        add(self.topPField)
+        add(label("top_k"))
+        add(self.topKField)
+        add(label("num_predict (optional)"))
+        add(self.numPredictField)
+        add(label("seed (optional)"))
+        add(self.seedField)
+        add(self.applySettingsBtn)
+        add(self.healthField)
+
+        self._sync_from_native()
+        self._check_health()
+
+        return self
+
+    def _sync_from_native(self) -> None:
+        settings = self.native.settings
+        self.dynamicField.setState_(1 if settings.get("dynamic_ctx") else 0)
+        self.maxCtxField.setStringValue_(str(settings.get("max_ctx", 40000)))
+        self.numCtxField.setStringValue_(str(settings.get("num_ctx", 8192)))
+        self.tempField.setStringValue_(str(settings.get("temperature", 0.9)))
+        self.topPField.setStringValue_(str(settings.get("top_p", 0.9)))
+        self.topKField.setStringValue_(str(settings.get("top_k", 100)))
+        self.numPredictField.setStringValue_(str(settings.get("num_predict", "")))
+        self.seedField.setStringValue_(str(settings.get("seed", "")))
+        self.systemField.setString_(self.native.system or "")
+
+    def applySettings_(self, _sender) -> None:
+        self.native.settings = {
+            "dynamic_ctx": bool(self.dynamicField.state()),
+            "max_ctx": int(self.maxCtxField.stringValue() or "40000"),
+            "num_ctx": int(self.numCtxField.stringValue() or "8192"),
+            "temperature": float(self.tempField.stringValue() or "0.9"),
+            "top_p": float(self.topPField.stringValue() or "0.9"),
+            "top_k": int(self.topKField.stringValue() or "100"),
+            "num_predict": (self.numPredictField.stringValue() or "").strip(),
+            "seed": (self.seedField.stringValue() or "").strip(),
+        }
+        self.native.system = str(self.systemField.string() or "")
+
+    def refreshModels_(self, _sender) -> None:
+        def on_result(obj: Dict[str, Any]) -> None:
+            self.modelsList.setString_(json.dumps(obj, indent=2))
 
         self.client.models(on_result)
 
-    def applyModel_(self, _):
+    def applyModel_(self, _sender) -> None:
         tag = self.modelField.stringValue()
         if not tag:
             return
 
-        def on_result(obj):
+        def on_result(obj: Dict[str, Any]) -> None:
             NSAlert.alertWithMessageText_defaultButton_alternateButton_otherButton_informativeTextWithFormat_(
                 "Model", "OK", None, None, json.dumps(obj)
             ).runModal()
 
         self.client.set_model(tag, on_result)
 
-    def _check_health(self):
-        def on_health(h):
-            if h.get("ok"):
+    def _check_health(self) -> None:
+        def on_health(payload: Dict[str, Any]) -> None:
+            if payload.get("ok"):
                 self.healthField.setStringValue_(
-                    f"Backend OK • model: {h.get('model')}"
+                    f"Backend OK • model: {payload.get('model')}"
                 )
             else:
                 self.healthField.setStringValue_(
-                    f"Backend DOWN: {h.get('error', 'unknown')}"
+                    f"Backend DOWN: {payload.get('error', 'unknown')}"
                 )
 
         self.client.health(on_health)
@@ -502,4 +665,10 @@ def build_web_chat_view(port_or_base: Union[int, str]) -> WKWebView:
     return web
 
 
-__all__ = ["ChatClient", "NativeChatView", "build_web_chat_view", "main_thread"]
+__all__ = [
+    "ChatClient",
+    "NativeChatView",
+    "SettingsPanel",
+    "build_web_chat_view",
+    "main_thread",
+]
