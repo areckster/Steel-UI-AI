@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import time
+import importlib
+import pathlib
+import sys
 
 import httpx
 from Cocoa import (
@@ -16,16 +19,16 @@ from Cocoa import (
 from Foundation import NSAutoreleasePool, NSMakeRect
 from PyObjCTools import AppHelper
 
-def _load_components():
-    import importlib
-    import pathlib
-    import sys
 
+def _load_components():
+    """Load backend and UI components, working both as a package and as a script."""
     if __package__:
+        # Normal package-relative imports
         backend_module = importlib.import_module(".backend", __package__)
         ui_module = importlib.import_module(".ui", __package__)
         return backend_module.EmbeddedBackend, ui_module.build_web_chat_view
 
+    # Script/bundle execution: adjust sys.path for absolute imports
     package_dir = pathlib.Path(__file__).resolve().parent
     if str(package_dir) not in sys.path:
         sys.path.insert(0, str(package_dir))
