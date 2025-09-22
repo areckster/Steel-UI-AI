@@ -19,7 +19,8 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
-where = ["macos/SteelChatApp"]
+where = ["."]
+include = ["macos_app_embedded"]
 
 [tool.setuptools.package-data]
 macos_app_embedded = [
@@ -27,7 +28,7 @@ macos_app_embedded = [
 ]
 
 [tool.py2app.app]
-script = "macos/SteelChatApp/macos_app_embedded/main.py"
+script = "macos_app_embedded/main.py"
 
 [tool.py2app.options]
 argv_emulation = true
@@ -39,5 +40,5 @@ resources = [
   "docstore.db",
   "index.html",
   "tmp",
-  "macos/SteelChatApp/resources"
+  "resources"
 ]

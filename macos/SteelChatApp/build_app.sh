@@ -11,6 +11,13 @@ pip install --upgrade pip
 pip install -r "$ROOT_DIR/../../requirements.txt"
 pip install py2app build
 
+# Install macOS-specific runtime dependencies required by py2app packaging.
+if [[ "$(uname)" == "Darwin" ]]; then
+  pip install pyobjc pyobjc-framework-Cocoa pyobjc-framework-WebKit
+else
+  echo "Skipping installation of pyobjc frameworks because the host platform is not macOS."
+fi
+
 cd "$ROOT_DIR"
 python -m build --wheel --sdist
 python setup.py py2app
