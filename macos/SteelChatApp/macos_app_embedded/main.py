@@ -22,20 +22,25 @@ from PyObjCTools import AppHelper
 
 def _load_components():
     """Load backend and UI components, working both as a package and as a script."""
-    if __package__:
-        # Normal package-relative imports
-        backend_module = importlib.import_module(".backend", __package__)
-        ui_module = importlib.import_module(".ui", __package__)
-        return backend_module.EmbeddedBackend, ui_module.build_web_chat_view
-
-    # Script/bundle execution: adjust sys.path for absolute imports
     package_dir = pathlib.Path(__file__).resolve().parent
-    if str(package_dir) not in sys.path:
-        sys.path.insert(0, str(package_dir))
+    package_name = package_dir.name
+    module_base = __package__ or package_name
 
-    backend_module = importlib.import_module("backend")
-    ui_module = importlib.import_module("ui")
-    return backend_module.EmbeddedBackend, ui_module.build_web_chat_view
+    try:
+        # Try importing with the detected package/module base
+        backend_module = importlib.import_module(f"{module_base}.backend")
+        ui_module = importlib.import_module(f"{module_base}.ui")
+        return backend_module.EmbeddedBackend, ui_module.build_web_chat_view
+    except ModuleNotFoundError:
+        # Fallback: ensure parent directory is on sys.path
+        parent_dir = package_dir.parent
+        parent_str = str(parent_dir)
+        if parent_str not in sys.path:
+            sys.path.insert(0, parent_str)
+
+        backend_module = importlib.import_module(f"{package_name}.backend")
+        ui_module = importlib.import_module(f"{package_name}.ui")
+        return backend_module.EmbeddedBackend, ui_module.build_web_chat_view
 
 
 EmbeddedBackend, build_web_chat_view = _load_components()

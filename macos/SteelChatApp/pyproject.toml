@@ -38,6 +38,7 @@ script = "macos_app_embedded/main.py"
 # bundle starts normally on modern macOS releases.
 argv_emulation = false
 includes = ["fastapi", "uvicorn", "httpx", "pyobjc", "pkg_resources", "jaraco.text"]
+packages = ["jaraco", "jaraco.text"]
 resources = [
   "server.py",
   "tools.py",
