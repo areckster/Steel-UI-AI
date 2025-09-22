@@ -32,3 +32,4 @@
 ## Environment & Configuration Tips
 - Backend behaviour is driven by env vars in `server.py` (`OLLAMA_HOST`, `MODEL`, `DEFAULT_NUM_CTX`, `USER_MAX_CTX`); document overrides in PRs.
 - Client utilities honour `CHAT_API` or `APP_BACKEND`; adjust these when running against non-default ports or hosts.
+- macOS packaging scripts live under `macos/SteelChatApp/`; run `./build_app.sh` on macOS to produce `dist/SteelChat.app` with the embedded backend.
