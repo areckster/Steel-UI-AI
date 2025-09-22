@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import time
+import importlib
+import pathlib
+import sys
 
 import httpx
 from Cocoa import (
@@ -16,20 +19,20 @@ from Cocoa import (
 from Foundation import NSAutoreleasePool, NSMakeRect
 from PyObjCTools import AppHelper
 
-def _load_components():
-    import importlib
-    import pathlib
-    import sys
 
+def _load_components():
+    """Load backend and UI components, working both as a package and as a script."""
     package_dir = pathlib.Path(__file__).resolve().parent
     package_name = package_dir.name
     module_base = __package__ or package_name
 
     try:
+        # Try importing with the detected package/module base
         backend_module = importlib.import_module(f"{module_base}.backend")
         ui_module = importlib.import_module(f"{module_base}.ui")
         return backend_module.EmbeddedBackend, ui_module.build_web_chat_view
     except ModuleNotFoundError:
+        # Fallback: ensure parent directory is on sys.path
         parent_dir = package_dir.parent
         parent_str = str(parent_dir)
         if parent_str not in sys.path:
