@@ -18,6 +18,7 @@ import os
 import sys
 import json
 import threading
+from pathlib import Path
 from typing import List, Dict, Any
 
 import asyncio
@@ -33,8 +34,17 @@ from Cocoa import (
     NSLayoutRelationEqual, NSAlert, NSAlertStyleInformational, NSSavePanel, NSOpenPanel,
     NSColor, NSMenu, NSMenuItem, NSTextAlignmentRight
 )
-from Foundation import NSURL, NSObject
-from WebKit import WKWebView, WKWebViewConfiguration
+from Foundation import NSObject
+
+PACKAGE_ROOT = Path(__file__).resolve().parent / "macos" / "SteelChatApp"
+if PACKAGE_ROOT.exists() and str(PACKAGE_ROOT) not in sys.path:
+    sys.path.insert(0, str(PACKAGE_ROOT))
+
+from macos_app_embedded.ui import (
+    ChatClient as EmbeddedChatClient,
+    NativeChatView as EmbeddedNativeChatView,
+    build_web_chat_view,
+)
 
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -42,12 +52,10 @@ BACKEND = os.getenv("APP_BACKEND", "http://127.0.0.1:8000")
 
 
 def main_thread(func):
-    """Decorator to ensure UI updates are on the main thread."""
-    from PyObjCTools import AppHelper
+    """Deprecated shim retained for backwards compatibility."""
+    from macos_app_embedded.ui import main_thread as _delegate  # type: ignore
 
-    def wrapper(*args, **kwargs):
-        AppHelper.callAfter(func, *args, **kwargs)
-    return wrapper
+    return _delegate(func)
 
 
 class ChatClient:
@@ -522,6 +530,11 @@ class SettingsPanel(NSWindow):
         self.client.health(on_health)
 
 
+# Override with shared implementations for runtime use
+ChatClient = EmbeddedChatClient
+NativeChatView = EmbeddedNativeChatView
+
+
 class AppDelegate(NSObject):
     def applicationDidFinishLaunching_(self, notification):
         self.client = ChatClient(BACKEND)
@@ -538,12 +551,8 @@ class AppDelegate(NSObject):
         self.mode = 0  # 0=native, 1=web
 
         self.native = NativeChatView.alloc().initWithClient_(self.client)
-        self.web = WKWebView.alloc().initWithFrame_configuration_(NSMakeRect(0, 0, 900, 640), WKWebViewConfiguration.alloc().init())
+        self.web = build_web_chat_view(BACKEND)
         self.web.setHidden_(True)
-        # Load local index.html for parity
-        local = os.path.join(APP_DIR, 'index.html')
-        if os.path.exists(local):
-            self.web.loadFileURL_allowingReadAccessToURL_(NSURL.fileURLWithPath_(local), NSURL.fileURLWithPath_(APP_DIR))
 
         root = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 900, 640))
         root.addSubview_(self.native)

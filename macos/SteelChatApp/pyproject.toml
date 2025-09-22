@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel", "py2app>=0.28"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "SteelChatApp"
+version = "0.1.0"
+description = "Standalone macOS bundle for SteelChat"
+readme = "README.md"
+authors = [{ name = "Steel Chat" }]
+requires-python = ">=3.9"
+dependencies = [
+  "fastapi",
+  "uvicorn[standard]",
+  "httpx",
+  "pyobjc",
+  "pyobjc-framework-Cocoa",
+  "pyobjc-framework-WebKit"
+]
+
+[tool.setuptools.packages.find]
+where = ["macos/SteelChatApp"]
+
+[tool.setuptools.package-data]
+macos_app_embedded = [
+  "../resources/web/index.html"
+]
+
+[tool.py2app.app]
+script = "macos/SteelChatApp/macos_app_embedded/main.py"
+
+[tool.py2app.options]
+argv_emulation = true
+includes = ["fastapi", "uvicorn", "httpx", "pyobjc"]
+resources = [
+  "server.py",
+  "tools.py",
+  "docstore.py",
+  "docstore.db",
+  "index.html",
+  "tmp",
+  "macos/SteelChatApp/resources"
+]
